@@ -6,6 +6,7 @@ import authRouter from "./routes/auth.js";
 import orderRouter from "./routes/orderRoutes.js";
 import subscribeRouter from "./routes/subscribeRoutes.js";
 import promoRouter from "./routes/promoRoutes.js";
+import productRouter from "./routes/productRoutes.js";
 import { productReviewRouter, directReviewRouter } from "./routes/reviewRoutes.js";
 
 dotenv.config();
@@ -16,9 +17,11 @@ const PORT = process.env.PORT || 5000;
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
+app.use("/api/products", productRouter);
 app.use("/api", authRouter);
 app.use("/api/orders", orderRouter);
 app.use("/api/subscribe", subscribeRouter);
+app.use("/api/promocodes", promoRouter);
 app.use("/api/promo-codes", promoRouter);
 app.use("/api/products/:productId/reviews", productReviewRouter);
 app.use("/api/reviews", directReviewRouter);

@@ -6,6 +6,7 @@ import authRouter from "./src/routes/auth.js";
 import orderRouter from "./src/routes/orderRoutes.js";
 import subscribeRouter from "./src/routes/subscribeRoutes.js";
 import promoRouter from "./src/routes/promoRoutes.js";
+import productRouter from "./src/routes/productRoutes.js";
 import { productReviewRouter, directReviewRouter } from "./src/routes/reviewRoutes.js";
 
 dotenv.config();
@@ -24,9 +25,11 @@ app.use(
 app.use(express.json());
 
 // Routes
+app.use("/api/products", productRouter);
 app.use("/api", authRouter);
 app.use("/api/orders", orderRouter);
 app.use("/api/subscribe", subscribeRouter);
+app.use("/api/promocodes", promoRouter);
 app.use("/api/promo-codes", promoRouter);
 app.use("/api/products/:productId/reviews", productReviewRouter);
 app.use("/api/reviews", directReviewRouter);

@@ -157,6 +157,7 @@ export const createOrder = async (req, res) => {
     // Server-side Promo Code and Discount Calculation
     let validatedPromoCode = null;
     let validatedDiscount = 0;
+    let shippingCharge = Number(orderData.shippingCharge) >= 0 ? Number(orderData.shippingCharge) : 500;
     const rawSubtotal = Number(orderData.subtotal) || Number(orderData.total) || 0;
 
     if (orderData.promoCode && typeof orderData.promoCode === "string") {
@@ -165,35 +166,61 @@ export const createOrder = async (req, res) => {
       if (promoRecord && promoRecord.isActive) {
         const now = new Date();
         const notExpired = !promoRecord.expiryDate || now <= promoRecord.expiryDate;
-        const meetsMin = !promoRecord.minimumOrderAmount || rawSubtotal >= promoRecord.minimumOrderAmount;
+        const minReq = promoRecord.minOrderAmount || promoRecord.minimumOrderAmount || 0;
+        const meetsMin = minReq === 0 || rawSubtotal >= minReq;
         const withinUsage = promoRecord.usageLimit === null || promoRecord.usedCount < promoRecord.usageLimit;
 
-        const userUses = userEmail
+        const userUses = userEmail && Array.isArray(promoRecord.usedBy)
           ? promoRecord.usedBy.filter((u) => u.userEmail === userEmail).length
           : 0;
         const withinPerUser = !promoRecord.perUserLimit || userUses < promoRecord.perUserLimit;
 
         if (notExpired && meetsMin && withinUsage && withinPerUser) {
           validatedPromoCode = promoRecord.code;
-          if (promoRecord.discountType === "percentage") {
+
+          if (promoRecord.discountType === "shipping" || cleanCode === "FREESHIP") {
+            shippingCharge = 0;
+            validatedDiscount = 0;
+          } else if (promoRecord.discountType === "percentage") {
             validatedDiscount = (rawSubtotal * promoRecord.discountValue) / 100;
-            if (promoRecord.maximumDiscount && validatedDiscount > promoRecord.maximumDiscount) {
-              validatedDiscount = promoRecord.maximumDiscount;
+            const maxDisc = promoRecord.maxDiscount || promoRecord.maximumDiscount;
+            if (maxDisc && validatedDiscount > maxDisc) {
+              validatedDiscount = maxDisc;
             }
           } else if (promoRecord.discountType === "fixed") {
             validatedDiscount = Math.min(promoRecord.discountValue, rawSubtotal);
           }
           validatedDiscount = Math.round(validatedDiscount * 100) / 100;
 
-          // Increment promo usage
-          promoRecord.usedCount += 1;
-          promoRecord.usedBy.push({
-            userEmail,
-            orderId: generatedId,
-            discountAmount: validatedDiscount,
-            usedAt: new Date(),
-          });
-          await promoRecord.save();
+          // Atomic promo usage increment preventing concurrent over-limit redemptions
+          const atomicQuery = {
+            _id: promoRecord._id,
+            isActive: true,
+            $or: [
+              { usageLimit: null },
+              { $expr: { $lt: ["$usedCount", "$usageLimit"] } },
+            ],
+          };
+
+          const atomicUpdate = {
+            $inc: { usedCount: 1 },
+            $push: {
+              usedBy: {
+                userEmail,
+                orderId: generatedId,
+                discountAmount: validatedDiscount,
+                usedAt: new Date(),
+              },
+            },
+          };
+
+          const updatedPromo = await PromoCode.findOneAndUpdate(atomicQuery, atomicUpdate, { new: true });
+          if (!updatedPromo) {
+            return res.status(400).json({
+              success: false,
+              message: `Promo code "${cleanCode}" has just reached its usage limit.`,
+            });
+          }
         }
       }
     } else if (Number(orderData.discountAmount) > 0) {

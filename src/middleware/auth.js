@@ -76,3 +76,16 @@ export const optionalToken = async (req, res, next) => {
     next();
   }
 };
+
+/**
+ * Middleware to require administrator privileges (isadmin: true).
+ */
+export const requireAdmin = (req, res, next) => {
+  if (!req.user || !req.user.isadmin) {
+    return res.status(403).json({
+      success: false,
+      message: "Access restricted to boutique administrators.",
+    });
+  }
+  next();
+};
